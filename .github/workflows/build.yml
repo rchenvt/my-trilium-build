@@ -1,30 +1,33 @@
-name: Build for Pi
-on: [push, workflow_dispatch] # Runs on every save or manual trigger
+name: Build Trilium
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-  build-and-push:
+  build:
     runs-on: ubuntu-latest
     permissions:
       packages: write
       contents: read
     steps:
-      - name: Checkout
+      - name: Get Code
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
+      - name: Setup ARM Support
         uses: docker/setup-qemu-action@v3
 
-      - name: Set up Docker Buildx
+      - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to GitHub Container Registry
+      - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push
+      - name: Build and Push to Pi
         uses: docker/build-push-action@v6
         with:
           context: .
