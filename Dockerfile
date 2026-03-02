@@ -8,9 +8,9 @@ WORKDIR /dist
 RUN VERSION=$(curl -s https://api.github.com/repos/TriliumNext/Trilium/releases/latest | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/') \
  && curl -L https://github.com/TriliumNext/Trilium/releases/download/v${VERSION}/TriliumNotes-Server-v${VERSION}-linux-${ARCH}.tar.xz | tar -xJ --strip-components=1
 WORKDIR /tmp
-RUN curl -L https://github.com/TriliumNext/Trilium/blob/main/apps/server/docker/package.json \
- && curl -L https://github.com/TriliumNext/Trilium/blob/main/apps/server/docker/pnpm-workspace.yaml \
- && curl -L https://github.com/TriliumNext/Trilium/blob/main/apps/server/start-docker.sh
+RUN curl -L https://raw.githubusercontent.com/TriliumNext/Trilium//main/apps/server/docker/package.json -o package.json \
+ && curl -L https://raw.githubusercontent.com/TriliumNext/Trilium//main/apps/server/docker/pnpm-workspace.yaml -o pnpm-workspace.yaml \
+ && curl -L https://raw.githubusercontent.com/TriliumNext/Trilium//main/apps/server/start-docker.sh -o start-docker.sh
 
 FROM node:24.14.0-alpine AS builder
 RUN corepack enable
