@@ -1,33 +1,40 @@
-# STAGE 1: Clone and Build Source (The "Heavy" part)
-FROM node:24-alpine AS source-builder
-# Added python3/make/g++ because the Pi needs them to build Trilium's frontend assets
-RUN apk add --no-cache git python3 make g++ && corepack enable
 
-WORKDIR /usr/src/app
-RUN git clone https://github.com/TriliumNext/Trilium.git .
-RUN pnpm install --no-frozen-lockfile
-RUN pnpm run build
+FROM alpine:3.23 AS downloader
+ARG ARCH=arm64
+ARG VERSION
+RUN apk add --no-cache curl tar xz
+WORKDIR /dist
 
-# STAGE 2: Build Native Modules (The "ARM-specific" part)
-FROM node:24-alpine AS builder
-# Pi MUST have these to compile better-sqlite3 for ARM64
-RUN apk add --no-cache python3 make g++ && corepack enable
+RUN VERSION=$(curl -s https://api.github.com/repos/TriliumNext/Trilium/releases/latest | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/') \
+ && curl -L https://github.com/TriliumNext/Trilium/releases/download/v${VERSION}/TriliumNotes-Server-v${VERSION}-linux-${ARCH}.tar.xz | tar -xJ --strip-components=1
+WORKDIR /tmp
+RUN curl -L https://github.com/TriliumNext/Trilium/blob/main/apps/server/docker/package.json \
+ && curl -L https://github.com/TriliumNext/Trilium/blob/main/apps/server/docker/pnpm-workspace.yaml \
+ && curl -L https://github.com/TriliumNext/Trilium/blob/main/apps/server/start-docker.sh
+
+FROM node:24.14.0-alpine AS builder
+RUN corepack enable
+
+# Install native dependencies since we might be building cross-platform.
 WORKDIR /usr/src/app
-COPY --from=source-builder /usr/src/app/docker/package.json ./
-COPY --from=source-builder /usr/src/app/docker/pnpm-workspace.yaml ./
+COPY --from=downloader /tmp/package.json /tmp/pnpm-workspace.yaml /usr/src/app/
+# We have to use --no-frozen-lockfile due to CKEditor patches
 RUN pnpm install --no-frozen-lockfile --prod && pnpm rebuild
 
-# STAGE 3: Final Runtime (The "Slim" part)
-FROM node:24-alpine
+FROM node:24.14.0-alpine
+# Install runtime dependencies
 RUN apk add --no-cache su-exec shadow
-WORKDIR /usr/src/app
 
-COPY --from=source-builder /usr/src/app/dist /usr/src/app
-COPY --from=source-builder /usr/src/app/start-docker.sh /usr/src/app
-# Replace generic modules with your ARM-compiled version
+WORKDIR /usr/src/app
+COPY --from=downloader /dist /usr/src/app
 RUN rm -rf /usr/src/app/node_modules/better-sqlite3
 COPY --from=builder /usr/src/app/node_modules/better-sqlite3 /usr/src/app/node_modules/better-sqlite3
+COPY --from=downloader /tmp/start-docker.sh /usr/src/app
 
-RUN adduser -s /bin/false -D node || true
+# Add application user
+RUN adduser -s /bin/false node; exit 0
+
+# Configure container
 EXPOSE 8080
 CMD [ "sh", "./start-docker.sh" ]
+HEALTHCHECK --start-period=10s CMD exec su-exec node node /usr/src/app/docker_healthcheck.cjs
